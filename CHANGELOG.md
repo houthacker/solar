@@ -1,5 +1,9 @@
 # Change log
 
+## 2.0 - unfinished
+
+Rewritten in Go.
+
 ## 1.1 - 2016-10-17
 ### Added
 * App will try to reconnect when inverter connection is lost (instead of stopping)
