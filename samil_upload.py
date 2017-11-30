@@ -46,7 +46,7 @@ def upload(pv, inverters, scheduler, timestamp, boundary):
             't': time.strftime('%H:%M'),
             'v1': round(sum(value['energy_today'] for value in values) * 1000),
             'v2': sum(value['output_power'] for value in values),
-            'v5': sum(value['internal_temp'] for value in values) / len(values),
+            'v5': sum(value['ambiant_temp'] for value in values) / len(values),
             'v6': sum(value['grid_voltage'] for value in values) / len(values)
         }
         logger.info('Uploading: %s', data)

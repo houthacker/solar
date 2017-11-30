@@ -1,9 +1,9 @@
-# Samil Power uploader
+# Samil Power uploader for TL-PM series
 
-PVOutput.org uploader for the following Samil Power inverters: SolarRiver TD
-series, SolarRiver TL-D series, SolarLake TL series.
+PVOutput.org uploader for the following Samil SolarLake TL-PM series (only tested on SolarLake 15000TL-PM).
 
-I use it for my system [here](http://pvoutput.org/intraday.jsp?sid=44819).
+This is a fork of mhvis/solar(https://github.com/mhvis/solar)
+Since mhvis/solar was not compatible with the SolarLake TL-PM series, I reverse engineered the protocol with Wireshark.
 
 ## Usage
 
@@ -97,12 +97,4 @@ System ID = 12346
 IP address = 192.168.80.31
 ```
 
-It is also possible to add more inverters, have separate API keys or use
-different status intervals. If anything is unclear or you need more help setting
-up your systems, make an [issue](https://github.com/mhvis/solar/issues) or
-[contact me](mailto:mail@maartenvisscher.nl).
 
-## Info
-
-The protocol used by these inverters is (somewhat) described
-[here](https://github.com/mhvis/solar/wiki/Communication-protocol).

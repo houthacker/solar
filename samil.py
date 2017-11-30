@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # samil.py
 #
-# Library and CLI tool for SolarRiver TD, SolarRiver TL-D and SolarLake TL
+# Library and CLI tool for SolarLake TL-PM
 # series (Samil Power inverters).
 #
 # (Requires Python 3)
@@ -17,12 +17,15 @@ logger = logging.getLogger(__name__)
 
 # Maximum time between packets (seconds float). If this time is reached a
 # keep-alive packet is sent.
-keep_alive_time = 10.0
+keep_alive_time = 1.0
+advertisement = b'\x55\xaa\x00\x0c\x01\x00\x00\x00\x00\x07\x00\x00\x00\x00\x01\x13'
+model_request = b'\x55\xaa\x00\x11\x01\x00\x00\x00\x00\x00\x00\x00\x02\x80\x01\x00\x00\x00\x7a\x02\x0e'
+data_request = 	b'\x55\xaa\x00\x11\x01\x00\x00\x00\x00\x00\x00\x03\x02\x80\x01\x03\xe8\x00\x4a\x02\xcc'
 
 class InverterListener:
     def __init__(self, interface_ip=''):
         # Start server to listen for incoming connections
-        listen_port = 1200
+        listen_port = 60001
         logger.debug('Binding TCP socket to %s:%s', interface_ip, listen_port)
         self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -53,10 +56,6 @@ class InverterListener:
         You can connect to multiple inverters by calling this function multiple
         times (each subsequent call will make a connection to a new inverter)."""
         logger.info('Searching for an inverter in the network')
-        # Broadcast packet identifier (header, end)
-        identifier = b'\x00\x40\x02', b'\x04\x3a'
-        payload = b'I AM SERVER'
-        message = _construct_request(identifier, payload)
         # Looping to wait for incoming connections while sending broadcasts
         tries = 0
         while True:
@@ -64,7 +63,7 @@ class InverterListener:
                 logger.warning('Connecting to inverter is taking a long '
                         'time, is it reachable?')
             logger.debug('Broadcasting server existence')
-            self.bc_sock.sendto(message, ('<broadcast>', 1300))
+            self.bc_sock.sendto(advertisement, ('<broadcast>', 60000))
             try:
                 sock, addr = self.server.accept()
             except socket.timeout:
@@ -114,8 +113,7 @@ class Inverter:
     def request_model_info(self):
         """Requests model information like the type, software version, and
         inverter 'name'."""
-        identifier = b'\x01\x03\x02', b'\x01\x05'
-        response = self.__make_request(identifier, b'')
+        response = self.__make_request(model_request)
         # TODO: format a nice return value
         #raise NotImplementedError('Not yet implemented')
         logger.info('Model info: %s', response)
@@ -123,76 +121,42 @@ class Inverter:
 
     def request_values(self):
         """Requests current values which are returned as a dictionary."""
-        identifier = b'\x01\x02\x02', b'\x01\x04'
         # Make request and receive response
-        header, payload, end = self.__make_request(identifier, b'')
-        # Separate each short value
-        values = [payload[i:i+2] for i in range(0, len(payload) - 4, 2)]
-        values += [payload[-4:]]
-        # Turn each value into an integer
-        ints = [int.from_bytes(x, byteorder='big') for x in values]
+        header, payload, end = self.__make_request(data_request)
         # Operating modes
         op_modes = {0: 'wait', 1: 'normal', 5: 'pv_power_off'}
-        op_mode = op_modes[ints[7]] if ints[7] in op_modes else str(ints[7])
+        op_mode = op_modes[int.from_bytes(payload[48:50], byteorder='big')] if int.from_bytes(payload[48:50], byteorder='big') in op_modes else str(int.from_bytes(payload[48:50], byteorder='big'))
         result = {
-            'internal_temp': ints[0] / 10.0, # degrees C
-            'pv1_voltage': ints[1] / 10.0, # V
-            'pv2_voltage': ints[2] / 10.0, # V
-            'pv1_current': ints[3] / 10.0, # A
-            'pv2_current': ints[4] / 10.0, # A
-            'total_operation_hours': ints[6], # h
+            'ambiant_temp': int.from_bytes(payload[0:2], byteorder='big') / 10.0,
+            'Inverter_temp': int.from_bytes(payload[14:16], byteorder='big') / 10.0,# degrees
+            'pv1_voltage': int.from_bytes(payload[2:4], byteorder='big') / 10.0, # V
+            'pv2_voltage': int.from_bytes(payload[4:6], byteorder='big') / 10.0, # V
+            'pv1_current': int.from_bytes(payload[6:8], byteorder='big') / 10.0, # A
+            'pv2_current': int.from_bytes(payload[8:10], byteorder='big') / 10.0, # A
+            'total_operation_hours': int.from_bytes(payload[38:42], byteorder='big'), # h
             # Operating mode needs more testing/verifying
             'operating_mode': op_mode,
-            'energy_today': ints[8] / 100.0, # kWh
-            'pv1_input_power': ints[19], # W
-            'pv2_input_power': ints[20], # W
-            'grid_current': ints[21] / 10.0, # A
-            'grid_voltage': ints[22] / 10.0, # V
-            'grid_frequency': ints[23] / 100.0, # Hz
-            'output_power': ints[24], # W
-            'energy_total': ints[25] / 10.0, # kWh
+            'energy_today': int.from_bytes(payload[42:44], byteorder='big') / 100.0, # kWh
+            #'pv1_input_power': ints[19], # W
+            #'pv2_input_power': ints[20], # W
+            'grid_current': int.from_bytes(payload[22:24], byteorder='big') / 10.0, # A
+            'grid_voltage': int.from_bytes(payload[18:20], byteorder='big') / 10.0, # V
+            'grid_frequency': int.from_bytes(payload[20:22], byteorder='big') / 100.0, # Hz
+            'output_power': int.from_bytes(payload[44:48], byteorder='big'), # W
+            'energy_total': int.from_bytes(payload[34:38], byteorder='big') / 10.0, # kWh
         }
         # For more info on the data format:
         # https://github.com/mhvis/solar/wiki/Communication-protocol#messages
         logger.debug('Current values: %s', result)
         return result
 
-    def request_history(self, start, end):
-        """Not yet implemented."""
-        raise NotImplementedError('Not yet implemented')
-        #identifier = b'\x06\x01\x02', b'\x01\x2a'
-        #return self.__make_request(identifier, b'')
     
-    def request_unknown_1(self):
-        identifier = b'\x01\x00\x02', b'\x01\x02'
-        response = self.__make_request(identifier, b'')
-        return response
-    
-    def request_unknown_2(self):
-        identifier = b'\x01\x09\x02', b'\x01\x0b'
-        response = self.__make_request(identifier, b'')
-        return response
-    
-    def request_unknown_3(self):
-        identifier = b'\x04\x00\x02', b'\x01\x05'
-        response = self.__make_request(identifier, b'')
-        return response
-    
-    def __make_request(self, identifier, payload, response_id=None):
+    def __make_request(self, request, response_id=None):
         """Directly makes a request and returns the response."""
         # Acquire socket request lock
         with self.lock:
             # Cancel a (possibly) running keep-alive timer
             self.keep_alive.cancel()
-            # Receive non-blocking, to clear the receive buffer
-            try:
-                self.sock.recv(1024, socket.MSG_DONTWAIT)
-            except socket.error as err:
-                if err.errno != 11:
-                    raise err
-            else:
-                logger.info('Receive buffer was not empty before a request')
-            request = _construct_request(identifier, payload)
             self.sock.send(request)
             # Receive message, possibly retrying when wrong message arrived
             while True:
@@ -214,9 +178,10 @@ class Inverter:
     def __keep_alive(self):
         """Makes a keep-alive request."""
         logger.debug('Keep alive')
-        identifier = b'\x01\x09\x02', b'\x01\x0b'
+        # I was not able to find a keep alive request so I just use a data request
         try:
-            self.__make_request(identifier, b'')
+            values = self.request_values();
+            logging.info(values);
         except Exception as err:
             logger.warning('Error in keep alive thread: %s', err)
 
@@ -229,38 +194,24 @@ class Inverter:
         return self.addr[0]
 
 
-def _construct_request(identifier, payload):
-    """Helper function to construct a request message to send."""
-    # Start of each message
-    start = b'\x55\xaa'
-    header, end = identifier
-    payload_size = len(payload).to_bytes(2, byteorder='big')
-    return start + header + payload_size + payload + end
-
 def _tear_down_response(data):
     """Helper function to extract header, payload and end from received response
     data."""
-    response_header = data[2:5]
+    response_header = data[2:17]
     # Below is actually not used
-    response_payload_size = int.from_bytes(data[5:7], byteorder='big')
-    response_payload = data[7:-2]
+    response_payload_size = data[18]
+    response_payload = data[19:-2]
     response_end = data[-2:]
     return response_header, response_payload, response_end
 
 # Test procedure
 if __name__ == '__main__':
-    # To-do use argparse
-    #parser = argparse.ArgumentParser(description='Monitoring tool for '
-    #'SolarRiver TD, SolarRiver TL-D and SolarLake TL inverter series.')
     import time
     logging.basicConfig(level=logging.DEBUG, stream=sys.stdout)
     with InverterListener() as listener:
         inverter = listener.connect()
     with inverter:
+        inverter.request_model_info()
         while True:
             inverter.request_values()
-            inverter.request_model_info()
-            inverter.request_unknown_1()
-            inverter.request_unknown_2()
-            inverter.request_unknown_3()
-            time.sleep(8)
+            time.sleep(1)
